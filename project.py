@@ -21,14 +21,6 @@ wristX = wristY = 0
 
 mousex = mousey = 0
 
-def cameraNotFound(image):
-     if image is None:
-         return True
-     
-def isInsideRectangle(x, y, rect):
-    xStart, yStart, xEnd, yEnd = rect
-    return x >= xStart and y >= yStart and y < yEnd
-
 def calculateAndStoreLandmarks(oneHandLandmark):
     global indexX
     global indexY
@@ -47,7 +39,7 @@ def calculateAndStoreLandmarks(oneHandLandmark):
     thumbX = int(oneHandLandmark[4].x * imageWidth)
     thumbY = int(oneHandLandmark[4].y * imageHeight)
     
-    middleY = int(oneHandLandmark[12].x * imageWidth)
+    middleX = int(oneHandLandmark[12].x * imageWidth)
     middleY = int(oneHandLandmark[12].y * imageHeight)
     
     ringX = int(oneHandLandmark[16].x * imageWidth)
@@ -89,16 +81,17 @@ def click():
         pyautogui.click()
 
 def drag():
-    if middleX - indexX < 15:
+    print(middleX - indexX)
+    if middleX - indexX < 10:
         pyautogui.mouseDown()
-    if middleX - indexX > 15:
+    if middleX - indexX > 30:
         pyautogui.mouseUp()
 
 @jit(target_backend='cuda')
 def capture():    
     while True:
         _, image = camera.read()
-        if cameraNotFound(image):
+        if image is None:
             break
         image = cv2.flip(image, 1)
         rgbImage = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
