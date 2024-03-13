@@ -11,7 +11,7 @@ import threading
 import time
 
 mpHands = mediapipe.solutions.hands
-captureHands = mediapipe.solutions.hands.Hands(static_image_mode=False, max_num_hands=1,  model_complexity=0, min_detection_confidence=0.5, min_tracking_confidence=0.5)
+captureHands = mediapipe.solutions.hands.Hands(static_image_mode=False, max_num_hands=1,  model_complexity=0, min_detection_confidence=0.9, min_tracking_confidence=0.9)
 drawingOptions = mediapipe.solutions.drawing_utils
 screenWidth, screenHeight = pyautogui.size()
 camera = cv2.VideoCapture(0)
@@ -19,25 +19,36 @@ camera = cv2.VideoCapture(0)
 imageHeight = 480
 imageWidth = 640
 
-indexX = indexY = 0
-indexKnuckleX = indexKnuckleY = 0
-thumbX = thumbY = 0
-middleX = middleY = 0
-middleKnuckleX = middleKnuckleY = 0
-ringX = ringY = 0
-ringKnuckleX = ringKnuckleY = 0
-wristX = wristY = 0
+holdActive = False
+currentTime = 0
+
+prevTime = {
+    "leftClick": 0,
+    "rightClick": 0,
+    "leftHold": 0,
+}
+
+coordinates = {
+    "index": {"x": 0,"y": 0},
+    "indexKnuckle": {"x": 0,"y": 0},
+    "thumb": {"x": 0,"y": 0},
+    "middle": {"x": 0,"y": 0},
+    "middleKnuckle": {"x": 0,"y": 0},
+    "ring": {"x": 0,"y": 0},
+    "ringKnuckle": {"x": 0,"y": 0},
+    "wrist": {"x": 0,"y": 0},
+}
 
 modeHandler = {
-    "cursorMode": False,
-    "freeHandMode": True,
+    "cursorMode": True,
+    "freeHandMode": False,
     "voiceMode": False
 }
 
 mousex = mousey = 0
 
 # click -> thumb to index knuckle
-# right click -> 
+# right click -> middle to thumb
 # scroll up
 # scroll down
 # drag
@@ -45,46 +56,30 @@ mousex = mousey = 0
 
 
 def calculateAndStoreLandmarks(oneHandLandmark):
-    global indexX
-    global indexY
-    global indexKnuckleX
-    global indexKnuckleY
-    global thumbX
-    global thumbY
-    global middleX
-    global middleY
-    global middleKnuckleX
-    global middleKnuckleY
-    global ringX
-    global ringY
-    global ringKnuckleX
-    global ringKnuckleY
-    global wristX
-    global wristY
+    global coordinates
     
-    indexX = int(oneHandLandmark[8].x * imageWidth)
-    indexY = int(oneHandLandmark[8].y * imageHeight)
+    coordinates["index"]["x"] = int(oneHandLandmark[8].x * imageWidth)
+    coordinates["index"]["y"] = int(oneHandLandmark[8].y * imageHeight)
     
-    indexKnuckleX = int(oneHandLandmark[5].x * imageWidth)
-    indexKnuckleY = int(oneHandLandmark[5].y * imageHeight)
+    coordinates["indexKnuckle"]["x"] = int(oneHandLandmark[5].x * imageWidth)
+    coordinates["indexKnuckle"]["y"] = int(oneHandLandmark[5].y * imageHeight)
     
-    thumbX = int(oneHandLandmark[4].x * imageWidth)
-    thumbY = int(oneHandLandmark[4].y * imageHeight)
+    coordinates["thumb"]["x"] = int(oneHandLandmark[4].x * imageWidth)
+    coordinates["thumb"]["y"] = int(oneHandLandmark[4].y * imageHeight)
     
-    middleX = int(oneHandLandmark[12].x * imageWidth)
-    middleY = int(oneHandLandmark[12].y * imageHeight)
+    coordinates["middle"]["x"] = int(oneHandLandmark[12].x * imageWidth)
+    coordinates["middle"]["y"] = int(oneHandLandmark[12].y * imageHeight)
     
-    middleKnuckleX = int(oneHandLandmark[9].x * imageWidth)
-    middleKnuckleY = int(oneHandLandmark[9].y * imageHeight)
+    coordinates["middleKnuckle"]["x"] = int(oneHandLandmark[9].x * imageWidth)
+    coordinates["middleKnuckle"]["y"] = int(oneHandLandmark[9].y * imageHeight)
     
-    ringX = int(oneHandLandmark[16].x * imageWidth)
-    ringY = int(oneHandLandmark[16].y * imageHeight)
+    coordinates["ring"]["x"] = int(oneHandLandmark[16].x * imageWidth)
+    coordinates["ring"]["y"] = int(oneHandLandmark[16].y * imageHeight)
     
-    ringKnuckleX = int(oneHandLandmark[13].x * imageWidth)
-    ringKnuckleY = int(oneHandLandmark[13].y * imageHeight)
+    coordinates["ringKnuckle"]["x"] = int(oneHandLandmark[13].x * imageWidth)
+    coordinates["ringKnuckle"]["y"] = int(oneHandLandmark[13].y * imageHeight)
     
-    wristX = int(oneHandLandmark[0].x * imageWidth)
-    wristY = int(oneHandLandmark[0].y * imageHeight)
+    coordinates["wrist"]["x"] = int(oneHandLandmark[0].x * imageWidth)
     
 def type_text(text):
     keyboard.write(text)
@@ -144,7 +139,11 @@ def voiceCommandMode():
             break    
     
 
-def calculateDistance(x1, x2, y1, y2):
+def calculateDistance(landmarkA, landmarkB):
+    x1 = coordinates[landmarkA]["x"]
+    x2 = coordinates[landmarkB]["x"]
+    y1 = coordinates[landmarkA]["y"]
+    y2 = coordinates[landmarkB]["y"]
     return abs(math.sqrt((x2 - x1)**2 + (y2 - y1)**2))
     
      
@@ -164,32 +163,72 @@ def validateMousePosition(mousex, mousey):
 def moveMouse():
     global mousex
     global mousey
+    indexX = coordinates["index"]["x"]
+    indexY = coordinates["index"]["y"]
     mousex = int(screenWidth / (450) * indexX * 1)
     mousey = int(screenHeight / (300) * indexY * 1)
     mousex, mousey = validateMousePosition(mousex, mousey)
     mouse.move(mousex, mousey, absolute=True)
 
 def scrollUp():
-    dist = calculateDistance(wristX, middleX, wristY, middleY)
+    dist = calculateDistance("wrist", "middle")
     if dist < 50:
         mouse.wheel(10)
+        print("scrolling up")
         
 def scrollDown():
-    if calculateDistance(wristX, ringX, wristY, ringY) < 50:
+    if calculateDistance("wrist", "ring") < 70:
         mouse.wheel(-10)
+        print("scrolling down")
 
 def click():
-    if calculateDistance(indexKnuckleX, thumbX, indexKnuckleY, thumbY) < 30:
+    global currentTime
+    if currentTime - prevTime["leftClick"] > 1 and calculateDistance("indexKnuckle", "thumb") < 30:
         mouse.click()
+        prevTime["leftClick"] = currentTime
+        print("clicked")
+        
+
+def rightClick():
+    global currentTime
+    if currentTime - prevTime["rightClick"] > 1 and calculateDistance("middle", "thumb") < 30:
+        mouse.right_click()
+        prevTime["rightClick"] = currentTime
+        print("right clicked")
 
 def drag():
-    if calculateDistance(middleX, indexX, middleY, indexY) < 20:
+    global holdActive
+    global currentTime 
+    if currentTime - prevTime["leftHold"] > 1 and holdActive == False and calculateDistance("ring", "thumb") < 30:
         mouse.press()
-    # if calculateDistance(middleX, indexX, middleY, indexY):
-    #     mouse.release()
+        holdActive = True
+        print("mouse hold")
+    elif currentTime - prevTime["leftHold"] > 1 and holdActive == True and calculateDistance("middle", "ring") < 30:
+        mouse.release()
+        holdActive = False
+        print("mouse release")
     
 def updateModeHandler():
-    print(calculateDistance())
+    if calculateDistance("index", "indexKnuckle") < 15 and calculateDistance("middle", "middleKnuckle") < 15 and calculateDistance("ring", "ringKnuckle") < 15 and calculateDistance("thumb", "indexKnuckle") > 75:
+        modeHandler["freeHandMode"] = False
+        modeHandler["cursorMode"] = True
+    # if calculateDistance("ring", "thumb") < 15:
+    #     modeHandler["cursorMode"] = False
+    #     modeHandler["voiceMode"] = True
+        
+def displayModeOnImage(image):
+    text = ""
+    if modeHandler["cursorMode"]:
+        text = "Cursor Mode"
+    elif modeHandler["freeHandMode"]:
+        text = "Free Hand Mode"
+    elif modeHandler["voiceMode"]:
+        text = "Voice Commands Mode"
+    cv2.putText(image, text, (460, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
+    
+def updateCurrentTime():
+    global currentTime
+    currentTime = time.time()
 
 @jit(target_backend='cuda')
 def capture():    
@@ -199,10 +238,12 @@ def capture():
             break
         image = cv2.flip(image, 1)
         cv2.rectangle(image, (0, 0), (450, 300), (255, 0, 0), 1)
+        cv2.rectangle(image, (450, 0), (640, 50), (0, 255, 0), -1)
+        displayModeOnImage(image)
         rgbImage = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         outputHands = captureHands.process(rgbImage)
         allHands = outputHands.multi_hand_landmarks
-        
+        updateCurrentTime()
         if allHands:
             for hand in allHands:
                 drawingOptions.draw_landmarks(image, hand, mpHands.HAND_CONNECTIONS)
@@ -210,12 +251,15 @@ def capture():
                 calculateAndStoreLandmarks(oneHandLandmark)
                 updateModeHandler()
                 if modeHandler["cursorMode"]:
-                    if indexX <= 450 and indexY <= 300:
+                    if coordinates["index"]["x"] <= 450 and coordinates["index"]["y"] <= 300:
                         moveMouse()
                     scrollUp()
                     scrollDown()
                     click()
+                    rightClick()
                     drag()
+                elif modeHandler["voiceMode"]:
+                    voiceCommandMode()
         cv2.imshow("cam", image)
         key = cv2.waitKey(1)
         if key == 27:
