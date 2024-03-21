@@ -9,6 +9,7 @@ import speech_recognition as sr
 import keyboard
 import threading
 import time
+import AppOpener
 
 mpHands = mediapipe.solutions.hands
 captureHands = mediapipe.solutions.hands.Hands(static_image_mode=False, max_num_hands=1,  model_complexity=0, min_detection_confidence=0.9, min_tracking_confidence=0.9)
@@ -37,12 +38,14 @@ coordinates = {
     "ring": {"x": 0,"y": 0},
     "ringKnuckle": {"x": 0,"y": 0},
     "wrist": {"x": 0,"y": 0},
+    "pinky": {"x": 0,"y": 0}
 }
 
 modeHandler = {
-    "cursorMode": True,
+    "cursorMode": False,
     "freeHandMode": False,
-    "voiceMode": False
+    "voiceMode": True,
+    "scrollMode": False
 }
 
 mousex = mousey = 0
@@ -79,6 +82,9 @@ def calculateAndStoreLandmarks(oneHandLandmark):
     coordinates["ringKnuckle"]["x"] = int(oneHandLandmark[13].x * imageWidth)
     coordinates["ringKnuckle"]["y"] = int(oneHandLandmark[13].y * imageHeight)
     
+    coordinates["pinky"]["x"] = int(oneHandLandmark[20].x * imageWidth)
+    coordinates["pinky"]["y"] = int(oneHandLandmark[20].y * imageHeight)
+    
     coordinates["wrist"]["x"] = int(oneHandLandmark[0].x * imageWidth)
     
 def type_text(text):
@@ -93,6 +99,9 @@ def hold_key(key):
 def release_key(key):
     keyboard.release(key)
 
+def sendCommands(command):
+    keyboard.send(command)
+
 def voiceCommandMode():
     recognizer = sr.Recognizer()
 
@@ -105,7 +114,9 @@ def voiceCommandMode():
 
             command = recognizer.recognize_google(audio).lower()
             print(f"Recognized command: {command}")
-
+            
+            # Only keyboard commands
+            
             if "type" in command:
                 text_to_type = command.split("type", 1)[1].strip()
                 type_text(text_to_type)
@@ -121,6 +132,44 @@ def voiceCommandMode():
             elif "release" in command:
                 key_to_release = command.split("release", 1)[1].strip()
                 release_key(key_to_release.replace(" ", "+"))
+                
+            # Commands related to copy/paste
+            
+            elif "copy line" in command:
+                sendCommands("home, ctrl+shift+end, ctrl+c")
+                
+            elif "copy word" in command:
+                sendCommands("ctrl+shift+left, ctrl+c")
+            
+            elif "copy everything" in command:
+                sendCommands("ctrl+a, ctrl+c") 
+                
+            elif "paste" in command:
+                sendCommands("ctrl+v")
+            
+            elif "delete" == command:
+                sendCommands("backspace")    
+            
+            elif "delete word" in command:
+                sendCommands("ctrl+backspace")
+                
+            elif "delete line" in command:
+                sendCommands("home, ctrl+shift+end, backspace")
+                
+            elif "delete everything" in command:
+                sendCommands("ctrl+a, backspace")
+                
+            # Commands related to Applications
+            
+            elif "open" in command:
+                application = command.split("open", 1)[1].strip()
+                AppOpener.open(application, match_closest=True)
+                
+            elif "close" in command:
+                application = command.split("open", 1)[1].strip()
+                AppOpener.close(application, match_closest=True)
+
+            # Exit
 
             elif "exit" in command:
                 print("Exiting the program.")
@@ -171,14 +220,14 @@ def moveMouse():
     mouse.move(mousex, mousey, absolute=True)
 
 def scrollUp():
-    dist = calculateDistance("wrist", "middle")
-    if dist < 50:
-        mouse.wheel(10)
+    dist = calculateDistance("thumb", "index")
+    if dist < 20:
+        mouse.wheel(3)
         print("scrolling up")
         
 def scrollDown():
-    if calculateDistance("wrist", "ring") < 70:
-        mouse.wheel(-10)
+    if calculateDistance("thumb", "middle") < 20:
+        mouse.wheel(-3)
         print("scrolling down")
 
 def click():
@@ -208,10 +257,16 @@ def drag():
         holdActive = False
         print("mouse release")
     
-def updateModeHandler():
+def updateModeHandler(mode1="", mode2=""):
     if calculateDistance("index", "indexKnuckle") < 15 and calculateDistance("middle", "middleKnuckle") < 15 and calculateDistance("ring", "ringKnuckle") < 15 and calculateDistance("thumb", "indexKnuckle") > 75:
         modeHandler["freeHandMode"] = False
         modeHandler["cursorMode"] = True
+    elif calculateDistance("thumb", "pinky") > 250:
+        modeHandler["cursorMode"] = False
+        modeHandler["scrollMode"] = True
+    elif mode1 == "scroll" and mode2 == "cursor" and calculateDistance("thumb", "ring") < 20:
+        modeHandler["cursorMode"] = True
+        modeHandler["scrollMode"] = False
     # if calculateDistance("ring", "thumb") < 15:
     #     modeHandler["cursorMode"] = False
     #     modeHandler["voiceMode"] = True
@@ -224,7 +279,10 @@ def displayModeOnImage(image):
         text = "Free Hand Mode"
     elif modeHandler["voiceMode"]:
         text = "Voice Commands Mode"
+    elif modeHandler["scrollMode"]:
+        text = "Scroll Mode"
     cv2.putText(image, text, (460, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255), 2)
+        
     
 def updateCurrentTime():
     global currentTime
@@ -253,11 +311,13 @@ def capture():
                 if modeHandler["cursorMode"]:
                     if coordinates["index"]["x"] <= 450 and coordinates["index"]["y"] <= 300:
                         moveMouse()
-                    scrollUp()
-                    scrollDown()
                     click()
                     rightClick()
                     drag()
+                # elif modeHandler["scrollMode"]:
+                #     scrollUp()
+                #     scrollDown()
+                #     updateModeHandler("scroll", "cursor")
                 elif modeHandler["voiceMode"]:
                     voiceCommandMode()
         cv2.imshow("cam", image)
