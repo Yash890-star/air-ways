@@ -267,17 +267,18 @@ def voiceCommandMode():
                     audio = recognizer.listen(mic, timeout=5, phrase_time_limit=8)
                     command = recognizer.recognize_google(audio).lower()
                     print(f"Recognized command: {command}")
-                    # Split into subcommands using 'and', 'then', or commas
+                    # Split phrase into subcommands by 'and', 'then', or commas
                     parts = re.split(r"\s+(?:and|then)\s+|\s*,\s*", command)
                     last_opened_was_browser = False
                     for part in parts:
                         sub = part.strip()
                         if not sub:
                             continue
-                        # Application commands
+                        # Application open/close
                         if sub.startswith("open "):
                             application = sub.split("open", 1)[1].strip()
                             AppOpener.open(application, match_closest=True)
+                            # if a browser was opened, remember so a following 'type' can go to URL
                             last_opened_was_browser = application.lower() in ("brave", "chrome", "firefox", "edge", "msedge", "opera")
                             if last_opened_was_browser:
                                 time.sleep(1)
@@ -285,10 +286,11 @@ def voiceCommandMode():
                             application = sub.split("close", 1)[1].strip()
                             AppOpener.close(application, match_closest=True)
                             last_opened_was_browser = False
-                        # Typing and keyboard
+                        # Keyboard actions
                         elif sub.startswith("type "):
                             text_to_type = sub.split("type", 1)[1].strip()
                             if last_opened_was_browser and "." not in text_to_type:
+                                # convert short site name to url
                                 url = text_to_type.replace(" ", "")
                                 if not url.startswith("www."):
                                     url = "www." + url
@@ -308,7 +310,6 @@ def voiceCommandMode():
                         elif sub.startswith("release "):
                             key_to_release = sub.split("release", 1)[1].strip()
                             release_key(key_to_release.replace(" ", "+"))
-                        # Clipboard / delete
                         elif sub == "delete":
                             sendCommands("backspace")
                         elif sub == "delete word":
@@ -326,14 +327,15 @@ def voiceCommandMode():
                         elif sub == "paste":
                             sendCommands("ctrl+v")
                         elif sub == "exit":
+                            print("Exiting voice mode.")
                             modeHandler["voiceMode"] = False
                             modeHandler["modeSelector"] = True
                             currentMode = "modeSelector"
                             break
                         else:
                             print(f"Unrecognized subcommand: '{sub}'")
-                        # small pause to allow spawned threads and app focus
-                        time.sleep(0.25)
+                        # small pause to allow spawned threads to run
+                        time.sleep(0.2)
                 except sr.WaitTimeoutError:
                     # No speech detected within timeout — continue listening
                     print("Listening timed out; retrying...")
